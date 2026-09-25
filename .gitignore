@@ -1,0 +1,6 @@
+.venv/
+data/*.dat
+!data/mock_predict.dat
+__pycache__/
+*.pyc
+.pytest_cache/

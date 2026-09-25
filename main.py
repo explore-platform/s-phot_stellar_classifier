@@ -1,12 +1,16 @@
+from pathlib import Path
 from timeit import default_timer as timer
+
 import explore_commons
 import numpy as np
 import pandas as pd
 from sklearn import metrics, utils, model_selection
 import matplotlib.pyplot as plt
 import xgboost as xgb
-import pickle
-#from XGBoost_Weighted import XGBClassifier_w
+
+import pickle, os
+
+from infer import save_artifacts
 
 # Set seed for reproducibility
 np.random.seed(1606421)
@@ -14,8 +18,8 @@ np.random.seed(1606421)
 idx = pd.IndexSlice
 
 # Read to dataframe
-df, classes, header = explore_commons.read_data('data/ms_augmented/df_plus_ms.dat',
-                                                'data/ms_augmented/classes_plus_ms.dat')
+df, classes, header = explore_commons.read_data('data/df_plus_ms.dat',
+                                                'data/classes_plus_ms.dat')
 
 # Preprocess df
 df, classes = explore_commons.process_data_frame_2(df, classes, header[2:])
@@ -46,8 +50,6 @@ PhysicsPackage = pd.concat([BasePackage, df.loc[:, idx["Adopted", ["E(B-V)", 'lo
 # All Relevant Variables
 FullPackage = pd.concat([BiasPackage, PhysicsPackage], axis=1)
 
-all_models = []
-
 # Split Indices
 train_indices, test_indices = explore_commons.custom_train_test_split_2(classes, test_size=0.2, min_class_instances=40)
 
@@ -59,15 +61,18 @@ y_train = classes.iloc[train_indices]
 
 y_train, mlb = explore_commons.classes_to_multilabel([i for i in y_train["class"].str.split(", ")])
 y_test = mlb.transform([i for i in y_test["class"].str.split(", ")])
-#pickle.dump(mlb, open(f'v3/models_3/LabelEncoder.pkl', "wb"))
+
+TUNING_DIR = 'tuning_results_5foldcv_2000_iter_ms_augmented'
 
 for dat_pack in DataPackages.items():
     # Read model tuned model parameters
-    with open(f'tuning_results_5foldcv_2000_iter_ms_augmented/output_{dat_pack[0]}.txt', "r") as fp:
+    with open(f'{TUNING_DIR}/output_{dat_pack[0]}.txt', "r") as fp:
         server_outputs = fp.readlines()
         package_params = eval(server_outputs[1])
 
     start = timer()
+
+    feature_columns = dat_pack[1].columns
 
     # Get train/test dataframes
     X_train = dat_pack[1].iloc[train_indices]
@@ -76,7 +81,7 @@ for dat_pack in DataPackages.items():
     # Remove multiheader information
     X_train.columns = range(X_train.shape[1])
     X_test.columns = range(X_test.shape[1])
-    
+
 
     w = np.array([package_params.pop(w_i) for w_i in weight_params])
     print(w)
@@ -90,10 +95,35 @@ for dat_pack in DataPackages.items():
     y_pred = model.predict(X_test)
 
     # No prediction is invalid so choose highest probability in that case
-    y_pred_prob = model.predict_proba(X_train)
+    y_pred_prob = model.predict_proba(X_test)
+    if isinstance(y_pred_prob, list):
+        y_pred_prob = np.column_stack(
+            [
+                p[:, 1] if np.asarray(p).ndim == 2 and np.asarray(p).shape[1] == 2 else np.asarray(p).reshape(-1)
+                for p in y_pred_prob
+            ]
+        )
+    else:
+        y_pred_prob = np.asarray(y_pred_prob)
     for i, j in enumerate(y_pred):
         if sum(j) < 1:
-            j[np.argmax(y_pred_prob[i])] = 1
+            j[np.argmax(y_pred_prob[i])] = 1  # i indexes test rows
+
+    meta = {
+        "package": dat_pack[0],
+        "n_features": int(X_train.shape[1]),
+        "classes": list(mlb.classes_),
+        "tuning_dir": TUNING_DIR,
+        "n_estimators": 500,
+        "eta": 0.1,
+        "class_weights": w.tolist(),
+        "trained_on_all_labels": False,
+    }
+    pkg_artifacts = Path("artifacts") / dat_pack[0]
+    save_artifacts(pkg_artifacts, model, mlb, feature_columns, meta)
+    if dat_pack[0] == "Full":
+        save_artifacts(Path("artifacts"), model, mlb, feature_columns, meta)
+    print(f"Saved artifacts to {pkg_artifacts}")
 
     end = timer()
 
