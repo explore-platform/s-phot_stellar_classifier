@@ -1,0 +1,10 @@
+# Dependabot: maintain the supported train/infer stack only.
+# requirements.txt is a legacy full-environment export (not used for install).
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    exclude-paths:
+      - requirements.txt

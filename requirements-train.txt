@@ -1,9 +1,10 @@
-# Minimal deps for main.py / infer.py (matches paper experiment stack on Python 3.9–3.11)
+# Minimal deps for main.py / infer.py (Python 3.9–3.11).
+# Pinned after: pip install -r requirements-train.txt (2026-03-25).
 numpy==1.23.0
 pandas==1.5.3
-scikit-learn==1.2.2
+scikit-learn==1.5.2
 xgboost==1.7.5
-astropy==5.3
-jupyter==1.0.0
-ipykernel==6.23.1
-matplotlib==3.7.1
+astropy==5.3.3
+jupyter==1.1.1
+ipykernel==6.31.0
+matplotlib==3.9.4
